@@ -2,41 +2,52 @@
 
 namespace app\widgets\HistoryList\helpers;
 
-use app\models\Call;
-use app\models\Customer;
-use app\models\History;
+use app\models\Event;
+use app\widgets\HistoryList\helpers\models\CallEventRender;
+use app\widgets\HistoryList\helpers\models\ChangeTypeEventRender;
+use app\widgets\HistoryList\helpers\models\CustomerChangeQualityEventRender;
+use app\widgets\HistoryList\helpers\models\DefaultEventRender;
+use app\widgets\HistoryList\helpers\models\EventRenderInterface;
+use app\widgets\HistoryList\helpers\models\FaxEventRender;
+use app\widgets\HistoryList\helpers\models\SmsEventRender;
+use app\widgets\HistoryList\helpers\models\TaskEventRender;
 
 class HistoryListHelper
 {
-    public static function getBodyByModel(History $model)
+    private static $_eventRenders = [];
+
+    /**
+     * @return EventRenderInterface[]
+     */
+    public static function renders()
     {
-        switch ($model->event) {
-            case History::EVENT_CREATED_TASK:
-            case History::EVENT_COMPLETED_TASK:
-            case History::EVENT_UPDATED_TASK:
-                $task = $model->task;
-                return "$model->eventText: " . ($task->title ?? '');
-            case History::EVENT_INCOMING_SMS:
-            case History::EVENT_OUTGOING_SMS:
-                return $model->sms->message ? $model->sms->message : '';
-            case History::EVENT_OUTGOING_FAX:
-            case History::EVENT_INCOMING_FAX:
-                return $model->eventText;
-            case History::EVENT_CUSTOMER_CHANGE_TYPE:
-                return "$model->eventText " .
-                    (Customer::getTypeTextByType($model->getDetailOldValue('type')) ?? "not set") . ' to ' .
-                    (Customer::getTypeTextByType($model->getDetailNewValue('type')) ?? "not set");
-            case History::EVENT_CUSTOMER_CHANGE_QUALITY:
-                return "$model->eventText " .
-                    (Customer::getQualityTextByQuality($model->getDetailOldValue('quality')) ?? "not set") . ' to ' .
-                    (Customer::getQualityTextByQuality($model->getDetailNewValue('quality')) ?? "not set");
-            case History::EVENT_INCOMING_CALL:
-            case History::EVENT_OUTGOING_CALL:
-                /** @var Call $call */
-                $call = $model->call;
-                return ($call ? $call->totalStatusText . ($call->getTotalDisposition(false) ? " <span class='text-grey'>" . $call->getTotalDisposition(false) . "</span>" : "") : '<i>Deleted</i> ');
-            default:
-                return $model->eventText;
+        return [
+            CallEventRender::class,
+            ChangeTypeEventRender::class,
+            CustomerChangeQualityEventRender::class,
+            FaxEventRender::class,
+            SmsEventRender::class,
+            TaskEventRender::class,
+        ];
+    }
+
+    /**
+     * @param Event $event
+     * @return EventRenderInterface
+     */
+    public static function getRender(Event $event)
+    {
+        if (!isset(self::$_eventRenders[$event->event])) {
+            foreach (self::renders() as $render) {
+                if (in_array($event->event, $render::getEventTypes())) {
+                    self::$_eventRenders[$event->event] = new $render();
+                }
+            }
+            if (!isset(self::$_eventRenders[$event->event])) {
+                self::$_eventRenders[$event->event] = new DefaultEventRender();
+            }
         }
+
+        return self::$_eventRenders[$event->event];
     }
 }
